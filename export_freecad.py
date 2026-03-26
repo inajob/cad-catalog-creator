@@ -6,6 +6,11 @@ freecad_bin = os.environ.get("FC_BIN_DIR", "")
 if freecad_bin and os.path.exists(freecad_bin) and freecad_bin not in sys.path:
     sys.path.append(freecad_bin)
 
+# Standard Linux paths (Ubuntu/PPA)
+for p in ["/usr/lib/freecad/lib", "/usr/lib/freecad-daily/lib", "/usr/lib/freecad/lib64"]:
+    if os.path.exists(p) and p not in sys.path:
+        sys.path.append(p)
+
 try:
     import FreeCAD
     import Mesh

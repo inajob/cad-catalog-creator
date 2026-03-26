@@ -25,8 +25,9 @@ jobs:
 
       - name: Install dependencies
         run: |
+          sudo add-apt-repository ppa:freecad-maintainers/freecad-stable -y
           sudo apt-get update
-          sudo apt-get install -y openscad freecad-common python3-freecad
+          sudo apt-get install -y openscad freecad
           pip install -r requirements.txt
 
       - name: Run build script
