@@ -111,7 +111,10 @@ def ensure_description(file_path):
 def run_command(cmd, cwd=None, env=None):
     try:
         subprocess.run(cmd, check=True, cwd=cwd, capture_output=True, text=True, env=env)
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
+        print(f"  Error running {' '.join(cmd)}")
+        if e.stdout: print(f"  STDOUT: {e.stdout}")
+        if e.stderr: print(f"  STDERR: {e.stderr}")
         return False
     return True
 
