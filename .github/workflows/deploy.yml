@@ -27,11 +27,11 @@ jobs:
         run: |
           sudo add-apt-repository ppa:freecad-maintainers/freecad-stable -y
           sudo apt-get update
-          sudo apt-get install -y openscad freecad
+          sudo apt-get install -y openscad freecad xvfb
           pip install -r requirements.txt
 
-      - name: Run build script
-        run: python build.py
+      - name: Run build script with Xvfb
+        run: xvfb-run python build.py
         env:
           GITHUB_ACTIONS: true
 
