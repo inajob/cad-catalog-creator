@@ -28,7 +28,7 @@ HTML_TEMPLATE = """
 <html>
 <head>
     <meta charset="utf-8">
-    <title>3D Model Catalog</title>
+    <title>Cad Catalog Creator (CCC)</title>
     <style>
         body { font-family: sans-serif; margin: 40px; background: #f0f0f0; color: #333; max-width: 1200px; margin-left: auto; margin-right: auto; }
         header { margin-bottom: 40px; border-bottom: 2px solid #ccc; padding-bottom: 20px; }
@@ -60,8 +60,8 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <header>
-        <h1>3D Model Catalog</h1>
-        <div class="site-description">{% if site_description %}{{ site_description }}{% else %}Welcome to my 3D model collection.{% endif %}</div>
+        <h1>Cad Catalog Creator (CCC)</h1>
+        <div class="site-description">{% if site_description %}{{ site_description }}{% else %}Welcome to my 3D model collection created with CCC.{% endif %}</div>
     </header>
 
     <div class="grid">
@@ -118,6 +118,7 @@ def run_command(cmd, cwd=None, env=None):
 def render_png_from_stl(stl_path, png_path):
     if not stl_path.exists():
         return False
+    print(f"  Generating preview: {png_path.name}")
     temp_scad = stl_path.with_suffix(".temp.scad")
     stl_path_str = str(stl_path.absolute()).replace("\\", "/")
     temp_scad.write_text(f'color("{OBJECT_COLOR}") import("{stl_path_str}");', encoding="utf-8")
@@ -228,7 +229,7 @@ def main():
     if SITE_DESC_PATH.exists():
         site_description = SITE_DESC_PATH.read_text(encoding="utf-8").strip()
     else:
-        site_description = "3Dプリンタ用モデルのカタログです。各モデルのSTLとSTEPファイルをダウンロードできます。"
+        site_description = "Cad Catalog Creator (CCC) によって自動生成された3Dモデルカタログです。各モデルのSTLとSTEPファイルをダウンロードできます。"
         try:
             SITE_DESC_PATH.write_text(site_description, encoding="utf-8")
         except Exception:
