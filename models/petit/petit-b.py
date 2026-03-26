@@ -1,5 +1,5 @@
 import cadquery as cq
-from ocp_vscode import *
+# from ocp_vscode import *
 
 result = (
     cq.Workplane("XY")
@@ -36,6 +36,7 @@ result = (
     .cutBlind(-7) # 奥行指定でcut
 )
 
-show_object(result)
-with open("petit-b.stl", "w") as f:
-    cq.exporters.exportShape(result, "STL", f)
+if "show_object" in globals():
+    show_object(result)
+
+cq.exporters.export(result, "petit-b.stl")
