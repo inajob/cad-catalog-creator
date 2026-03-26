@@ -9,7 +9,8 @@ from dotenv import load_dotenv
 # Load local .env if exists
 load_dotenv()
 
-# --- Configuration (with defaults for GitHub Actions) ---
+# --- Configuration ---
+REPO_URL = "https://github.com/inajob/cad-catalog-creator"
 OPENSCAD_PATH = os.getenv("OPENSCAD_PATH", "openscad")
 FREECAD_PATH = os.getenv("FREECAD_PYTHON_PATH", "python")
 FREECAD_BIN_DIR = os.getenv("FREECAD_BIN_DIR", "")
@@ -31,8 +32,9 @@ HTML_TEMPLATE = """
     <title>Cad Catalog Creator (CCC)</title>
     <style>
         body { font-family: sans-serif; margin: 40px; background: #f0f0f0; color: #333; max-width: 1200px; margin-left: auto; margin-right: auto; }
-        header { margin-bottom: 40px; border-bottom: 2px solid #ccc; padding-bottom: 20px; }
+        header { margin-bottom: 40px; border-bottom: 2px solid #ccc; padding-bottom: 20px; position: relative; }
         header h1 { margin-bottom: 10px; color: #222; }
+        .repo-link { position: absolute; right: 0; top: 0; font-size: 0.9em; font-weight: bold; }
         .site-description { line-height: 1.6; color: #555; white-space: pre-wrap; }
         
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 30px; }
@@ -53,14 +55,16 @@ HTML_TEMPLATE = """
         .badge-cadquery { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
 
         .description { font-size: 0.9em; color: #666; margin-bottom: 20px; flex-grow: 1; white-space: pre-wrap; line-height: 1.5; }
-        .links { margin-top: auto; padding-top: 10px; border-top: 1px dashed #eee; }
-        .links a { margin-right: 15px; text-decoration: none; color: #007bff; font-size: 0.9em; font-weight: bold; }
+        .links { margin-top: auto; padding-top: 10px; border-top: 1px dashed #eee; display: flex; flex-wrap: wrap; gap: 10px; }
+        .links a { text-decoration: none; color: #007bff; font-size: 0.85em; font-weight: bold; }
         .links a:hover { text-decoration: underline; }
+        .links .source-link { color: #28a745; }
     </style>
 </head>
 <body>
     <header>
         <h1>Cad Catalog Creator (CCC)</h1>
+        <div class="repo-link"><a href="{{ repo_url }}" target="_blank">View on GitHub</a></div>
         <div class="site-description">{% if site_description %}{{ site_description }}{% else %}Welcome to my 3D model collection created with CCC.{% endif %}</div>
     </header>
 
@@ -81,6 +85,7 @@ HTML_TEMPLATE = """
             <div class="description">{% if model.description %}{{ model.description }}{% else %}(No description){% endif %}</div>
             
             <div class="links">
+                {% if model.source_url %}<a href="{{ model.source_url }}" class="source-link" target="_blank">Source</a>{% endif %}
                 {% if model.stl %}<a href="{{ model.stl }}">STL</a>{% endif %}
                 {% if model.step %}<a href="{{ model.step }}">STEP</a>{% endif %}
             </div>
@@ -90,6 +95,11 @@ HTML_TEMPLATE = """
 </body>
 </html>
 """
+
+def get_source_url(file_path):
+    """GitHub上のソースファイルへのパスを生成する"""
+    rel_path = file_path.relative_to(Path(".")).as_posix()
+    return f"{REPO_URL}/blob/main/{rel_path}"
 
 def ensure_description(file_path):
     """説明文ファイルを確認し、なければ雛形を生成して内容を返す"""
@@ -111,10 +121,7 @@ def ensure_description(file_path):
 def run_command(cmd, cwd=None, env=None):
     try:
         subprocess.run(cmd, check=True, cwd=cwd, capture_output=True, text=True, env=env)
-    except subprocess.CalledProcessError as e:
-        print(f"  Error running {' '.join(cmd)}")
-        if e.stdout: print(f"  STDOUT: {e.stdout}")
-        if e.stderr: print(f"  STDERR: {e.stderr}")
+    except subprocess.CalledProcessError:
         return False
     return True
 
@@ -139,7 +146,6 @@ def convert_scad(file_path):
     stl_out = DIST_DIR / f"{base_name}.stl"
     png_out = DIST_DIR / f"{base_name}.png"
     
-    # Check modification times
     if not all(f.exists() for f in [stl_out, png_out]) or \
        file_path.stat().st_mtime > stl_out.stat().st_mtime:
         print(f"  Building {base_name}...")
@@ -152,7 +158,8 @@ def convert_scad(file_path):
         "name": base_name, "stl": f"{base_name}.stl" if stl_out.exists() else None, 
         "png": f"{base_name}.png" if png_out.exists() else None,
         "description": ensure_description(file_path),
-        "source": "OpenSCAD"
+        "source": "OpenSCAD",
+        "source_url": get_source_url(file_path)
     }
 
 def convert_py(file_path):
@@ -193,7 +200,8 @@ if "result" in namespace:
         "step": f"{base_name}.step" if step_out.exists() else None, 
         "png": f"{base_name}.png" if png_out.exists() else None,
         "description": ensure_description(file_path),
-        "source": "CadQuery"
+        "source": "CadQuery",
+        "source_url": get_source_url(file_path)
     }
 
 def convert_fcstd(file_path):
@@ -220,7 +228,8 @@ def convert_fcstd(file_path):
         "step": f"{base_name}.step" if step_out.exists() else None, 
         "png": f"{base_name}.png" if png_out.exists() else None,
         "description": ensure_description(file_path),
-        "source": "FreeCAD"
+        "source": "FreeCAD",
+        "source_url": get_source_url(file_path)
     }
 
 def main():
@@ -232,7 +241,7 @@ def main():
     if SITE_DESC_PATH.exists():
         site_description = SITE_DESC_PATH.read_text(encoding="utf-8").strip()
     else:
-        site_description = "Cad Catalog Creator (CCC) によって自動生成された3Dモデルカタログです。各モデルのSTLとSTEPファイルをダウンロードできます。"
+        site_description = "Cad Catalog Creator (CCC) によって自動生成された3Dモデルカタログです。"
         try:
             SITE_DESC_PATH.write_text(site_description, encoding="utf-8")
         except Exception:
@@ -249,7 +258,7 @@ def main():
         models_info.append(convert_fcstd(fcstd_file))
 
     template = Template(HTML_TEMPLATE)
-    html = template.render(models=models_info, site_description=site_description, base_url="")
+    html = template.render(models=models_info, site_description=site_description, repo_url=REPO_URL, base_url="")
     (DIST_DIR / "index.html").write_text(html, encoding="utf-8")
     print(f"\nBuild complete! {len(models_info)} models cataloged.")
 
