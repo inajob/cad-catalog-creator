@@ -2,15 +2,23 @@ import os
 import subprocess
 import shutil
 import sys
+import re
 from pathlib import Path
 from jinja2 import Template
 from dotenv import load_dotenv
+from PIL import Image
 
 # Load local .env if exists
 load_dotenv()
 
 # --- Configuration ---
 REPO_URL = "https://github.com/inajob/cad-catalog-creator"
+m = re.match(r"https://github\.com/([^/]+)/([^/]+)", REPO_URL)
+if m:
+    BASE_URL = f"https://{m.group(1)}.github.io/{m.group(2)}/"
+else:
+    BASE_URL = os.getenv("BASE_URL", "/")
+
 OPENSCAD_PATH = os.getenv("OPENSCAD_PATH", "openscad")
 FREECAD_PATH = os.getenv("FREECAD_PYTHON_PATH", "python")
 FREECAD_BIN_DIR = os.getenv("FREECAD_BIN_DIR", "")
@@ -22,14 +30,25 @@ OBJECT_COLOR = "CornflowerBlue"
 MODELS_DIR = Path("models")
 DIST_DIR = Path("dist")
 SITE_DESC_PATH = MODELS_DIR / "site_description.md"
+OG_IMAGE_SRC = MODELS_DIR / "og_image.png"
 
 # --- Templates ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cad Catalog Creator (CCC)</title>
+    
+    <!-- OGP Tags -->
+    <meta property="og:title" content="Cad Catalog Creator (CCC)">
+    <meta property="og:description" content="{{ site_description|truncate(100) }}">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ base_url }}">
+    {% if og_image %}<meta property="og:image" content="{{ base_url }}{{ og_image }}">{% endif %}
+    <meta name="twitter:card" content="summary_large_image">
+    
     <style>
         body { font-family: sans-serif; margin: 40px; background: #f0f0f0; color: #333; max-width: 1200px; margin-left: auto; margin-right: auto; }
         header { margin-bottom: 40px; border-bottom: 2px solid #ccc; padding-bottom: 20px; position: relative; }
@@ -96,26 +115,69 @@ HTML_TEMPLATE = """
 </html>
 """
 
+def generate_og_collage(models_info, output_path):
+    """Generate a rich collage image for OGP (3x2 or 4x2 grid)."""
+    images = []
+    for m in models_info:
+        if m.get("png"):
+            img_path = DIST_DIR / m["png"]
+            if img_path.exists():
+                images.append(img_path)
+    
+    if not images:
+        return None
+
+    # OGP size 1200x630
+    W, H = 1200, 630
+    canvas = Image.new('RGB', (W, H), color=(240, 240, 240))
+    
+    # Determine grid size based on available images
+    n = len(images)
+    if n >= 8:
+        cols, rows = 4, 2
+    elif n >= 6:
+        cols, rows = 3, 2
+    elif n >= 4:
+        cols, rows = 2, 2
+    else:
+        cols, rows = n, 1
+
+    cell_w = W // cols
+    cell_h = H // rows
+
+    for i in range(min(n, cols * rows)):
+        try:
+            img = Image.open(images[i])
+            # Preserve aspect ratio within the cell
+            img.thumbnail((cell_w, cell_h), Image.Resampling.LANCZOS)
+            
+            # Calculate centering within the grid cell
+            col = i % cols
+            row = i // cols
+            x_offset = col * cell_w + (cell_w - img.width) // 2
+            y_offset = row * cell_h + (cell_h - img.height) // 2
+            
+            canvas.paste(img, (x_offset, y_offset))
+        except Exception as e:
+            print(f"  Warning: Could not process image {images[i]} for collage: {e}")
+    
+    canvas.save(output_path)
+    return output_path.name
+
 def get_source_url(file_path):
-    """GitHub上のソースファイルへのパスを生成する"""
     rel_path = file_path.relative_to(Path(".")).as_posix()
     return f"{REPO_URL}/blob/main/{rel_path}"
 
 def ensure_description(file_path):
-    """説明文ファイルを確認し、なければ雛形を生成して内容を返す"""
     md_path = file_path.with_suffix(".md")
     txt_path = file_path.with_suffix(".txt")
     for p in [md_path, txt_path]:
         if p.exists():
-            try:
-                return p.read_text(encoding="utf-8").strip()
-            except Exception:
-                return ""
+            try: return p.read_text(encoding="utf-8").strip()
+            except Exception: return ""
     placeholder = f"{file_path.stem}\n\n(ここに説明を入力してください)"
-    try:
-        md_path.write_text(placeholder, encoding="utf-8")
-    except Exception:
-        pass
+    try: md_path.write_text(placeholder, encoding="utf-8")
+    except Exception: pass
     return placeholder
 
 def run_command(cmd, cwd=None, env=None):
@@ -126,8 +188,7 @@ def run_command(cmd, cwd=None, env=None):
     return True
 
 def render_png_from_stl(stl_path, png_path):
-    if not stl_path.exists():
-        return False
+    if not stl_path.exists(): return False
     print(f"  Generating preview: {png_path.name}")
     temp_scad = stl_path.with_suffix(".temp.scad")
     stl_path_str = str(stl_path.absolute()).replace("\\", "/")
@@ -136,8 +197,7 @@ def render_png_from_stl(stl_path, png_path):
         OPENSCAD_PATH, "-o", str(png_path.absolute()), 
         f"--colorscheme={COLOR_SCHEME}", "--imgsize=1024,1024", str(temp_scad.absolute())
     ])
-    if temp_scad.exists():
-        temp_scad.unlink()
+    if temp_scad.exists(): temp_scad.unlink()
     return success
 
 def convert_scad(file_path):
@@ -145,120 +205,66 @@ def convert_scad(file_path):
     base_name = str(rel_path.with_suffix("")).replace(os.sep, "_")
     stl_out = DIST_DIR / f"{base_name}.stl"
     png_out = DIST_DIR / f"{base_name}.png"
-    
-    if not all(f.exists() for f in [stl_out, png_out]) or \
-       file_path.stat().st_mtime > stl_out.stat().st_mtime:
+    if not all(f.exists() for f in [stl_out, png_out]) or file_path.stat().st_mtime > stl_out.stat().st_mtime:
         print(f"  Building {base_name}...")
         run_command([OPENSCAD_PATH, "-o", str(stl_out.absolute()), str(file_path.absolute())])
-        run_command([
-            OPENSCAD_PATH, "-o", str(png_out.absolute()), 
-            f"--colorscheme={COLOR_SCHEME}", "--imgsize=1024,1024", str(file_path.absolute())
-        ])
-    return {
-        "name": base_name, "stl": f"{base_name}.stl" if stl_out.exists() else None, 
-        "png": f"{base_name}.png" if png_out.exists() else None,
-        "description": ensure_description(file_path),
-        "source": "OpenSCAD",
-        "source_url": get_source_url(file_path)
-    }
+        run_command([OPENSCAD_PATH, "-o", str(png_out.absolute()), f"--colorscheme={COLOR_SCHEME}", "--imgsize=1024,1024", str(file_path.absolute())])
+    return {"name": base_name, "stl": f"{base_name}.stl" if stl_out.exists() else None, "png": f"{base_name}.png" if png_out.exists() else None, "description": ensure_description(file_path), "source": "OpenSCAD", "source_url": get_source_url(file_path)}
 
 def convert_py(file_path):
     rel_path = file_path.relative_to(MODELS_DIR)
     base_name = str(rel_path.with_suffix("")).replace(os.sep, "_")
-    stl_out = DIST_DIR / f"{base_name}.stl"
-    step_out = DIST_DIR / f"{base_name}.step"
-    png_out = DIST_DIR / f"{base_name}.png"
-    
-    if not all(f.exists() for f in [stl_out, step_out, png_out]) or \
-       file_path.stat().st_mtime > stl_out.stat().st_mtime:
+    stl_out, step_out, png_out = DIST_DIR/f"{base_name}.stl", DIST_DIR/f"{base_name}.step", DIST_DIR/f"{base_name}.png"
+    if not all(f.exists() for f in [stl_out, step_out, png_out]) or file_path.stat().st_mtime > stl_out.stat().st_mtime:
         print(f"  Building {base_name}...")
         wrapper_path = file_path.parent / "_build_wrapper.py"
-        stl_abs = str(stl_out.absolute()).replace("\\", "/")
-        step_abs = str(step_out.absolute()).replace("\\", "/")
-        file_abs = str(file_path.absolute()).replace("\\", "/")
-        wrapper_content = f"""
-import sys, os
-from unittest.mock import MagicMock
-import cadquery as cq
-sys.modules["ocp_vscode"] = MagicMock()
-def show_object(*args, **kwargs): pass
-namespace = {{"show_object": show_object, "cq": cq, "__name__": "__main__", "__file__": "{file_abs}"}}
-os.chdir("{str(file_path.parent.absolute()).replace("\\", "/")}")
-with open("{file_abs}", "r", encoding="utf-8") as f: exec(f.read(), namespace)
-if "result" in namespace:
-    result = namespace["result"]
-    cq.exporters.export(result, "{stl_abs}")
-    cq.exporters.export(result, "{step_abs}")
-"""
+        stl_abs, step_abs, file_abs = str(stl_out.absolute()).replace("\\", "/"), str(step_out.absolute()).replace("\\", "/"), str(file_path.absolute()).replace("\\", "/")
+        wrapper_content = f'import sys, os\nfrom unittest.mock import MagicMock\nimport cadquery as cq\nsys.modules["ocp_vscode"] = MagicMock()\ndef show_object(*args, **kwargs): pass\nnamespace = {{"show_object": show_object, "cq": cq, "__name__": "__main__", "__file__": "{file_abs}"}}\nos.chdir("{str(file_path.parent.absolute()).replace("\\", "/")}")\nwith open("{file_abs}", "r", encoding="utf-8") as f: exec(f.read(), namespace)\nif "result" in namespace:\n    result = namespace["result"]\n    cq.exporters.export(result, "{stl_abs}")\n    cq.exporters.export(result, "{step_abs}")'
         wrapper_path.write_text(wrapper_content, encoding="utf-8")
         run_command([sys.executable, str(wrapper_path.absolute())])
         wrapper_path.unlink()
-        if stl_out.exists():
-            render_png_from_stl(stl_out, png_out)
-    return {
-        "name": base_name, "stl": f"{base_name}.stl" if stl_out.exists() else None, 
-        "step": f"{base_name}.step" if step_out.exists() else None, 
-        "png": f"{base_name}.png" if png_out.exists() else None,
-        "description": ensure_description(file_path),
-        "source": "CadQuery",
-        "source_url": get_source_url(file_path)
-    }
+        if stl_out.exists(): render_png_from_stl(stl_out, png_out)
+    return {"name": base_name, "stl": f"{base_name}.stl" if stl_out.exists() else None, "step": f"{base_name}.step" if step_out.exists() else None, "png": f"{base_name}.png" if png_out.exists() else None, "description": ensure_description(file_path), "source": "CadQuery", "source_url": get_source_url(file_path)}
 
 def convert_fcstd(file_path):
     rel_path = file_path.relative_to(MODELS_DIR)
     base_name = str(rel_path.with_suffix("")).replace(os.sep, "_")
-    stl_out = DIST_DIR / f"{base_name}.stl"
-    step_out = DIST_DIR / f"{base_name}.step"
-    png_out = DIST_DIR / f"{base_name}.png"
-    
-    if not all(f.exists() for f in [stl_out, step_out, png_out]) or \
-       file_path.stat().st_mtime > stl_out.stat().st_mtime:
+    stl_out, step_out, png_out = DIST_DIR/f"{base_name}.stl", DIST_DIR/f"{base_name}.step", DIST_DIR/f"{base_name}.png"
+    if not all(f.exists() for f in [stl_out, step_out, png_out]) or file_path.stat().st_mtime > stl_out.stat().st_mtime:
         print(f"  Building {base_name}...")
         env = os.environ.copy()
-        env["FC_INPUT"] = str(file_path.absolute())
-        env["FC_STL"] = str(stl_out.absolute())
-        env["FC_STEP"] = str(step_out.absolute())
-        env["FC_BIN_DIR"] = FREECAD_BIN_DIR
-        script_path = Path("export_freecad.py").absolute()
-        run_command([FREECAD_PATH, str(script_path)], env=env)
-        if stl_out.exists():
-            render_png_from_stl(stl_out, png_out)
-    return {
-        "name": base_name, "stl": f"{base_name}.stl" if stl_out.exists() else None, 
-        "step": f"{base_name}.step" if step_out.exists() else None, 
-        "png": f"{base_name}.png" if png_out.exists() else None,
-        "description": ensure_description(file_path),
-        "source": "FreeCAD",
-        "source_url": get_source_url(file_path)
-    }
+        env.update({"FC_INPUT": str(file_path.absolute()), "FC_STL": str(stl_out.absolute()), "FC_STEP": str(step_out.absolute()), "FC_BIN_DIR": FREECAD_BIN_DIR})
+        run_command([FREECAD_PATH, str(Path("export_freecad.py").absolute())], env=env)
+        if stl_out.exists(): render_png_from_stl(stl_out, png_out)
+    return {"name": base_name, "stl": f"{base_name}.stl" if stl_out.exists() else None, "step": f"{base_name}.step" if step_out.exists() else None, "png": f"{base_name}.png" if png_out.exists() else None, "description": ensure_description(file_path), "source": "FreeCAD", "source_url": get_source_url(file_path)}
 
 def main():
-    if not DIST_DIR.exists():
-        DIST_DIR.mkdir()
-
-    # Get site description
-    site_description = ""
-    if SITE_DESC_PATH.exists():
-        site_description = SITE_DESC_PATH.read_text(encoding="utf-8").strip()
-    else:
-        site_description = "Cad Catalog Creator (CCC) によって自動生成された3Dモデルカタログです。"
-        try:
-            SITE_DESC_PATH.write_text(site_description, encoding="utf-8")
-        except Exception:
-            pass
+    if not DIST_DIR.exists(): DIST_DIR.mkdir()
+    site_description = SITE_DESC_PATH.read_text(encoding="utf-8").strip() if SITE_DESC_PATH.exists() else "Cad Catalog Creator (CCC) によって自動生成された3Dモデルカタログです。"
+    if not SITE_DESC_PATH.exists(): SITE_DESC_PATH.write_text(site_description, encoding="utf-8")
 
     models_info = []
-    for scad_file in sorted(MODELS_DIR.glob("**/*.scad")):
-        models_info.append(convert_scad(scad_file))
+    for scad_file in sorted(MODELS_DIR.glob("**/*.scad")): models_info.append(convert_scad(scad_file))
     for py_file in sorted(MODELS_DIR.glob("**/*.py")):
-        if py_file.name in ["build.py", "export_freecad.py"] or py_file.name.startswith("_"):
-            continue
+        if py_file.name in ["build.py", "export_freecad.py", "site_description.md", "og_image.png"] or py_file.name.startswith("_"): continue
         models_info.append(convert_py(py_file))
-    for fcstd_file in sorted(MODELS_DIR.glob("**/*.fcstd")):
-        models_info.append(convert_fcstd(fcstd_file))
+    for fcstd_file in sorted(MODELS_DIR.glob("**/*.fcstd")): models_info.append(convert_fcstd(fcstd_file))
+
+    # OGP Image logic: Custom image > Collage > First image
+    og_image = None
+    if OG_IMAGE_SRC.exists():
+        shutil.copy(OG_IMAGE_SRC, DIST_DIR / "og_image.png")
+        og_image = "og_image.png"
+    else:
+        og_image = generate_og_collage(models_info, DIST_DIR / "og_collage.png")
+        if not og_image and models_info:
+            for m in models_info:
+                if m.get("png"):
+                    og_image = m["png"]
+                    break
 
     template = Template(HTML_TEMPLATE)
-    html = template.render(models=models_info, site_description=site_description, repo_url=REPO_URL, base_url="")
+    html = template.render(models=models_info, site_description=site_description, repo_url=REPO_URL, base_url=BASE_URL, og_image=og_image)
     (DIST_DIR / "index.html").write_text(html, encoding="utf-8")
     print(f"\nBuild complete! {len(models_info)} models cataloged.")
 
