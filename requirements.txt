@@ -1,0 +1,3 @@
+cadquery
+jinja2
+python-dotenv
