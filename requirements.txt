@@ -2,3 +2,4 @@ cadquery
 jinja2
 python-dotenv
 Pillow
+markdown

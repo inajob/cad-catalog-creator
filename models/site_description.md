@@ -1,3 +1,1 @@
-Cad Catalog Creator (CCC) によって自動生成された3Dモデルカタログです。
-各モデルのSTLとSTEPファイルをダウンロードできます。
-説明文（.md）をモデルと同じフォルダに置くことで、ここに詳細を表示できます。
+[inajob](https://inajob.github.io/intro/index.html)の作成した3Dプリンタのためのモデルデータ置き場です。
