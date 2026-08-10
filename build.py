@@ -3,6 +3,8 @@ import subprocess
 import shutil
 import sys
 import re
+import struct
+import math
 from pathlib import Path
 from jinja2 import Template
 from dotenv import load_dotenv
@@ -27,6 +29,10 @@ FREECAD_BIN_DIR = os.getenv("FREECAD_BIN_DIR", "")
 # Preview settings
 COLOR_SCHEME = "DeepOcean" 
 OBJECT_COLOR = "CornflowerBlue"
+
+# Preview rendering
+BLANK_VARIANCE_THRESHOLD = 40.0
+FRAME_FILL_RATIO = 0.92
 
 MODELS_DIR = Path("models")
 DIST_DIR = Path("dist")
@@ -184,19 +190,100 @@ def ensure_description(file_path):
     return md_to_html(content)
 
 def run_command(cmd, cwd=None, env=None):
-    try: subprocess.run(cmd, check=True, cwd=cwd, capture_output=True, text=True, env=env)
-    except subprocess.CalledProcessError: return False
+    try:
+        subprocess.run(cmd, check=True, cwd=cwd, capture_output=True, text=True, env=env)
+    except subprocess.CalledProcessError as e:
+        if e.stderr and e.stderr.strip():
+            print(f"  [error] {' '.join(cmd)} failed:\n{e.stderr.strip()}")
+        return False
+    except OSError as e:
+        print(f"  [error] could not run {' '.join(cmd)}: {e}")
+        return False
     return True
 
-def render_png_from_stl(stl_path, png_path):
-    if not stl_path.exists(): return False
+def is_blank_image(png_path):
+    """True if the PNG looks like a blank/uniform image (model not visible)."""
+    if not png_path.exists() or png_path.stat().st_size == 0:
+        return True
+    try:
+        img = Image.open(png_path).convert("L").resize((128, 128))
+        px = list(img.getdata())
+        n = len(px)
+        mean = sum(px) / n
+        var = sum((v - mean) ** 2 for v in px) / n
+        return var < BLANK_VARIANCE_THRESHOLD
+    except Exception:
+        return True
+
+def frame_content(png_path, bg_threshold=20, fill_ratio=FRAME_FILL_RATIO):
+    """Trim uniform background margins and center the model in the frame."""
+    try:
+        img = Image.open(png_path).convert("RGB")
+    except Exception:
+        return
+    w, h = img.size
+    scale = max(1, min(w, h) // 512)
+    small = img.resize((w // scale, h // scale), Image.Resampling.LANCZOS)
+    spx = small.load()
+    sw, sh = small.size
+    bg = tuple(sum(spx[x, y][c] for x, y in [(0, 0), (sw - 1, 0), (0, sh - 1), (sw - 1, sh - 1)]) // 4 for c in range(3))
+    min_x, min_y, max_x, max_y = sw, sh, -1, -1
+    th2 = bg_threshold ** 2
+    for y in range(sh):
+        for x in range(sw):
+            r, g, b = spx[x, y]
+            if (r - bg[0]) ** 2 + (g - bg[1]) ** 2 + (b - bg[2]) ** 2 > th2:
+                if x < min_x: min_x = x
+                if x > max_x: max_x = x
+                if y < min_y: min_y = y
+                if y > max_y: max_y = y
+    if max_x < min_x:
+        return
+    box = (min_x * scale, min_y * scale, min((max_x + 1) * scale, w), min((max_y + 1) * scale, h))
+    crop = img.crop(box)
+    target = int(min(w, h) * fill_ratio)
+    r = target / max(crop.width, crop.height)
+    if r > 1:
+        crop = crop.resize((max(1, int(crop.width * r)), max(1, int(crop.height * r))), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGB", (w, h), bg)
+    canvas.paste(crop, ((w - crop.width) // 2, (h - crop.height) // 2))
+    canvas.save(png_path)
+
+def render_scad_png(scad_path, png_path):
+    """Render a .scad file to a preview PNG, retrying until the model is visible."""
+    if not scad_path.exists():
+        return False
     print(f"  Generating preview: {png_path.name}")
+    base = [OPENSCAD_PATH, "-o", str(png_path.absolute()), f"--colorscheme={COLOR_SCHEME}", "--imgsize=1024,1024", "--autocenter", "--viewall"]
+    src = str(scad_path.absolute())
+    for extra in (None, "--projection=ortho", "--render"):
+        cmd = base + ([extra] if extra else [])
+        if not run_command(cmd + [src]):
+            continue
+        if is_blank_image(png_path):
+            continue
+        frame_content(png_path)
+        return True
+    return False
+
+def render_png_from_stl(stl_path, png_path):
+    if not stl_path.exists() or stl_path.stat().st_size == 0:
+        return False
     temp_scad = stl_path.with_suffix(".temp.scad")
     stl_path_str = str(stl_path.absolute()).replace("\\", "/")
     temp_scad.write_text(f'color("{OBJECT_COLOR}") import("{stl_path_str}");', encoding="utf-8")
-    success = run_command([OPENSCAD_PATH, "-o", str(png_path.absolute()), f"--colorscheme={COLOR_SCHEME}", "--imgsize=1024,1024", str(temp_scad.absolute())])
-    if temp_scad.exists(): temp_scad.unlink()
-    return success
+    try:
+        return render_scad_png(temp_scad, png_path)
+    finally:
+        if temp_scad.exists(): temp_scad.unlink()
+
+def find_fallback_stl(model_dir):
+    """Return a non-empty STL already present in the model directory, if any."""
+    for pattern in ("*Body*.stl", "*.stl"):
+        for p in sorted(model_dir.glob(pattern)):
+            if p.exists() and p.stat().st_size > 0:
+                return p
+    return None
 
 def convert_scad(file_path):
     rel_path = file_path.relative_to(MODELS_DIR)
@@ -205,14 +292,14 @@ def convert_scad(file_path):
     if not all(f.exists() for f in [stl_out, png_out]) or file_path.stat().st_mtime > stl_out.stat().st_mtime:
         print(f"  Building {base_name}...")
         run_command([OPENSCAD_PATH, "-o", str(stl_out.absolute()), str(file_path.absolute())])
-        run_command([OPENSCAD_PATH, "-o", str(png_out.absolute()), f"--colorscheme={COLOR_SCHEME}", "--imgsize=1024,1024", str(file_path.absolute())])
+        render_scad_png(file_path, png_out)
     return {"name": base_name, "stl": f"{base_name}.stl" if stl_out.exists() else None, "png": f"{base_name}.png" if png_out.exists() else None, "description": ensure_description(file_path), "source": "OpenSCAD", "source_url": get_source_url(file_path)}
 
 def convert_py(file_path):
     rel_path = file_path.relative_to(MODELS_DIR)
     base_name = str(rel_path.with_suffix("")).replace(os.sep, "_")
     stl_out, step_out, png_out = DIST_DIR/f"{base_name}.stl", DIST_DIR/f"{base_name}.step", DIST_DIR/f"{base_name}.png"
-    if not all(f.exists() for f in [stl_out, step_out, png_out]) or file_path.stat().st_mtime > stl_out.stat().st_mtime:
+    if not all(f.exists() for f in [stl_out, png_out]) or file_path.stat().st_mtime > stl_out.stat().st_mtime:
         print(f"  Building {base_name}...")
         wrapper_path = file_path.parent / "_build_wrapper.py"
         stl_abs, step_abs, file_abs = str(stl_out.absolute()).replace("\\", "/"), str(step_out.absolute()).replace("\\", "/"), str(file_path.absolute()).replace("\\", "/")
@@ -220,19 +307,31 @@ def convert_py(file_path):
         wrapper_path.write_text(wrapper_content, encoding="utf-8")
         run_command([sys.executable, str(wrapper_path.absolute())])
         wrapper_path.unlink()
-        if stl_out.exists(): render_png_from_stl(stl_out, png_out)
+        if not stl_out.exists() or stl_out.stat().st_size == 0:
+            fallback = find_fallback_stl(file_path.parent)
+            if fallback:
+                print(f"  Export produced no STL; using existing {fallback.name}")
+                shutil.copy(fallback, stl_out)
+        if stl_out.exists() and stl_out.stat().st_size > 0:
+            render_png_from_stl(stl_out, png_out)
     return {"name": base_name, "stl": f"{base_name}.stl" if stl_out.exists() else None, "step": f"{base_name}.step" if step_out.exists() else None, "png": f"{base_name}.png" if png_out.exists() else None, "description": ensure_description(file_path), "source": "CadQuery", "source_url": get_source_url(file_path)}
 
 def convert_fcstd(file_path):
     rel_path = file_path.relative_to(MODELS_DIR)
     base_name = str(rel_path.with_suffix("")).replace(os.sep, "_")
     stl_out, step_out, png_out = DIST_DIR/f"{base_name}.stl", DIST_DIR/f"{base_name}.step", DIST_DIR/f"{base_name}.png"
-    if not all(f.exists() for f in [stl_out, step_out, png_out]) or file_path.stat().st_mtime > stl_out.stat().st_mtime:
+    if not all(f.exists() for f in [stl_out, png_out]) or file_path.stat().st_mtime > stl_out.stat().st_mtime:
         print(f"  Building {base_name}...")
         env = os.environ.copy()
         env.update({"FC_INPUT": str(file_path.absolute()), "FC_STL": str(stl_out.absolute()), "FC_STEP": str(step_out.absolute()), "FC_BIN_DIR": FREECAD_BIN_DIR})
         run_command([FREECAD_PATH, str(Path("export_freecad.py").absolute())], env=env)
-        if stl_out.exists(): render_png_from_stl(stl_out, png_out)
+        if not stl_out.exists() or stl_out.stat().st_size == 0:
+            fallback = find_fallback_stl(file_path.parent)
+            if fallback:
+                print(f"  Export produced no STL; using existing {fallback.name}")
+                shutil.copy(fallback, stl_out)
+        if stl_out.exists() and stl_out.stat().st_size > 0:
+            render_png_from_stl(stl_out, png_out)
     return {"name": base_name, "stl": f"{base_name}.stl" if stl_out.exists() else None, "step": f"{base_name}.step" if step_out.exists() else None, "png": f"{base_name}.png" if png_out.exists() else None, "description": ensure_description(file_path), "source": "FreeCAD", "source_url": get_source_url(file_path)}
 
 def main():

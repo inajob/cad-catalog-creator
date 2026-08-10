@@ -32,24 +32,44 @@ def export(input_file, stl_out, step_out):
     stl_out = os.path.abspath(stl_out)
     step_out = os.path.abspath(step_out)
     
-    # Find objects to export. 
+    # Find objects to export.
+    # Do NOT filter by InList: bodies inside App::Part / LinkGroup containers
+    # (common in FreeCAD 1.x documents) have a non-empty InList and would be
+    # skipped, resulting in an empty export and a blank preview.
     objs = []
     print(f"Total objects in document: {len(doc.Objects)}")
     for obj in doc.Objects:
-        if hasattr(obj, "Shape") and obj.Shape:
-            # Only export top-level visible objects that are likely the final result
-            if obj.InList:
-                continue
-            objs.append(obj)
-            print(f"  Adding {obj.Name} to export list")
-    
-    if not objs:
-        # Fallback: if no top-level objects with shape found, try to find any Body
-        for obj in doc.Objects:
-            if obj.isDerivedFrom("PartDesign::Body") or obj.isDerivedFrom("Part::Feature"):
-                 if not obj.InList:
-                     objs.append(obj)
-                     print(f"  Adding {obj.Name} (Body/Feature) to export list")
+        if not hasattr(obj, "Shape"):
+            continue
+        try:
+            shape = obj.Shape
+        except Exception:
+            continue
+        if shape is None or shape.isNull():
+            continue
+        if obj.Name == "Origin" or "Origin" in obj.TypeId:
+            continue
+        if obj.TypeId.startswith("Sketcher") or "SketchObject" in obj.TypeId:
+            continue
+        if shape.ShapeType not in ("Compound", "Solid", "Shell"):
+            continue
+        objs.append(obj)
+        print(f"  Adding {obj.Name} ({obj.TypeId}) to export list")
+
+    # Deduplicate by geometry hash to avoid exporting the same solid twice
+    seen = set()
+    unique = []
+    for obj in objs:
+        try:
+            h = obj.Shape.hashCode()
+        except Exception:
+            h = None
+        if h is not None and h in seen:
+            continue
+        if h is not None:
+            seen.add(h)
+        unique.append(obj)
+    objs = unique
 
     # Export to STL (using Mesh)
     print(f"Exporting {len(objs)} objects to {stl_out}...")
@@ -58,6 +78,8 @@ def export(input_file, stl_out, step_out):
         print("STL Export successful.")
     except Exception as e:
         print(f"Failed to export STL: {e}")
+    if os.path.exists(stl_out) and os.path.getsize(stl_out) == 0:
+        print(f"WARNING: {stl_out} is empty (0 bytes). The document may not contain exportable solids.")
     
     # Export to STEP (using Part)
     print(f"Exporting {len(objs)} objects to {step_out}...")
