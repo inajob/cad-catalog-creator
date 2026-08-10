@@ -248,7 +248,7 @@ def main():
     for py_file in sorted(MODELS_DIR.glob("**/*.py")):
         if py_file.name in ["build.py", "export_freecad.py", "site_description.md", "og_image.png"] or py_file.name.startswith("_"): continue
         models_info.append(convert_py(py_file))
-    for fcstd_file in sorted(MODELS_DIR.glob("**/*.fcstd")): models_info.append(convert_fcstd(fcstd_file))
+    for fcstd_file in sorted(MODELS_DIR.glob("**/*.FCStd")): models_info.append(convert_fcstd(fcstd_file))
 
     og_image = None
     if OG_IMAGE_SRC.exists():
