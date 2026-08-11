@@ -23,18 +23,29 @@ if m:
 else:
     BASE_URL = os.getenv("BASE_URL", "/")
 
-OPENSCAD_PATH = os.getenv("OPENSCAD_PATH", "openscad")
 FREECAD_BIN_DIR = os.getenv("FREECAD_BIN_DIR", "")
+
+def resolve_openscad_command():
+    """Prefer OPENSCAD_PATH if it points to a real binary, else find openscad on PATH."""
+    configured = os.environ.get("OPENSCAD_PATH")
+    if configured and shutil.which(configured):
+        return configured
+    for cand in ("openscad", "openscad-nightly"):
+        if shutil.which(cand):
+            return cand
+    return "openscad"
 
 def resolve_freecad_command():
     """Prefer FreeCAD's own interpreter; its python bindings are guaranteed to load there."""
-    if "FREECAD_PYTHON_PATH" in os.environ:
-        return os.environ["FREECAD_PYTHON_PATH"]
+    configured = os.environ.get("FREECAD_PYTHON_PATH")
+    if configured and shutil.which(configured):
+        return configured
     for cand in ("freecadcmd", "FreeCADCmd", "python"):
         if shutil.which(cand):
             return cand
     return "python"
 
+OPENSCAD_PATH = resolve_openscad_command()
 FREECAD_PATH = resolve_freecad_command()
 
 # Preview settings
