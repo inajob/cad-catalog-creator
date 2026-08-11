@@ -5,6 +5,7 @@ import sys
 import re
 import struct
 import math
+import zipfile
 from pathlib import Path
 from jinja2 import Template
 from dotenv import load_dotenv
@@ -23,8 +24,18 @@ else:
     BASE_URL = os.getenv("BASE_URL", "/")
 
 OPENSCAD_PATH = os.getenv("OPENSCAD_PATH", "openscad")
-FREECAD_PATH = os.getenv("FREECAD_PYTHON_PATH", "python")
 FREECAD_BIN_DIR = os.getenv("FREECAD_BIN_DIR", "")
+
+def resolve_freecad_command():
+    """Prefer FreeCAD's own interpreter; its python bindings are guaranteed to load there."""
+    if "FREECAD_PYTHON_PATH" in os.environ:
+        return os.environ["FREECAD_PYTHON_PATH"]
+    for cand in ("freecadcmd", "FreeCADCmd", "python"):
+        if shutil.which(cand):
+            return cand
+    return "python"
+
+FREECAD_PATH = resolve_freecad_command()
 
 # Preview settings
 COLOR_SCHEME = "DeepOcean" 
@@ -256,7 +267,7 @@ def render_scad_png(scad_path, png_path):
     print(f"  Generating preview: {png_path.name}")
     base = [OPENSCAD_PATH, "-o", str(png_path.absolute()), f"--colorscheme={COLOR_SCHEME}", "--imgsize=1024,1024", "--autocenter", "--viewall"]
     src = str(scad_path.absolute())
-    for extra in (None, "--projection=ortho", "--render"):
+    for extra in (None, "--projection=ortho"):
         cmd = base + ([extra] if extra else [])
         if not run_command(cmd + [src]):
             continue
@@ -285,6 +296,16 @@ def find_fallback_stl(model_dir):
                 return p
     return None
 
+def extract_fcstd_thumbnail(fcstd_path, png_path):
+    """Extract the thumbnail embedded in a .FCStd file as a fallback preview."""
+    try:
+        with zipfile.ZipFile(fcstd_path) as z:
+            thumb = z.read("thumbnails/Thumbnail.png")
+        png_path.write_bytes(thumb)
+        return png_path
+    except Exception:
+        return None
+
 def convert_scad(file_path):
     rel_path = file_path.relative_to(MODELS_DIR)
     base_name = str(rel_path.with_suffix("")).replace(os.sep, "_")
@@ -292,8 +313,14 @@ def convert_scad(file_path):
     if not all(f.exists() for f in [stl_out, png_out]) or file_path.stat().st_mtime > stl_out.stat().st_mtime:
         print(f"  Building {base_name}...")
         run_command([OPENSCAD_PATH, "-o", str(stl_out.absolute()), str(file_path.absolute())])
-        render_scad_png(file_path, png_out)
-    return {"name": base_name, "stl": f"{base_name}.stl" if stl_out.exists() else None, "png": f"{base_name}.png" if png_out.exists() else None, "description": ensure_description(file_path), "source": "OpenSCAD", "source_url": get_source_url(file_path)}
+        if stl_out.exists() and stl_out.stat().st_size == 0:
+            stl_out.unlink()
+        ok = render_scad_png(file_path, png_out)
+        if not ok and png_out.exists():
+            png_out.unlink()
+    stl = f"{base_name}.stl" if stl_out.exists() and stl_out.stat().st_size > 0 else None
+    png = f"{base_name}.png" if png_out.exists() and png_out.stat().st_size > 0 else None
+    return {"name": base_name, "stl": stl, "png": png, "description": ensure_description(file_path), "source": "OpenSCAD", "source_url": get_source_url(file_path)}
 
 def convert_py(file_path):
     rel_path = file_path.relative_to(MODELS_DIR)
@@ -313,8 +340,13 @@ def convert_py(file_path):
                 print(f"  Export produced no STL; using existing {fallback.name}")
                 shutil.copy(fallback, stl_out)
         if stl_out.exists() and stl_out.stat().st_size > 0:
-            render_png_from_stl(stl_out, png_out)
-    return {"name": base_name, "stl": f"{base_name}.stl" if stl_out.exists() else None, "step": f"{base_name}.step" if step_out.exists() else None, "png": f"{base_name}.png" if png_out.exists() else None, "description": ensure_description(file_path), "source": "CadQuery", "source_url": get_source_url(file_path)}
+            ok = render_png_from_stl(stl_out, png_out)
+            if not ok and png_out.exists():
+                png_out.unlink()
+    stl = f"{base_name}.stl" if stl_out.exists() and stl_out.stat().st_size > 0 else None
+    step = f"{base_name}.step" if step_out.exists() and step_out.stat().st_size > 0 else None
+    png = f"{base_name}.png" if png_out.exists() and png_out.stat().st_size > 0 else None
+    return {"name": base_name, "stl": stl, "step": step, "png": png, "description": ensure_description(file_path), "source": "CadQuery", "source_url": get_source_url(file_path)}
 
 def convert_fcstd(file_path):
     rel_path = file_path.relative_to(MODELS_DIR)
@@ -331,8 +363,19 @@ def convert_fcstd(file_path):
                 print(f"  Export produced no STL; using existing {fallback.name}")
                 shutil.copy(fallback, stl_out)
         if stl_out.exists() and stl_out.stat().st_size > 0:
-            render_png_from_stl(stl_out, png_out)
-    return {"name": base_name, "stl": f"{base_name}.stl" if stl_out.exists() else None, "step": f"{base_name}.step" if step_out.exists() else None, "png": f"{base_name}.png" if png_out.exists() else None, "description": ensure_description(file_path), "source": "FreeCAD", "source_url": get_source_url(file_path)}
+            ok = render_png_from_stl(stl_out, png_out)
+        else:
+            ok = False
+        if not ok:
+            if png_out.exists():
+                png_out.unlink()
+            if extract_fcstd_thumbnail(file_path, png_out):
+                ok = True
+                print(f"  Using embedded FreeCAD thumbnail as preview")
+    stl = f"{base_name}.stl" if stl_out.exists() and stl_out.stat().st_size > 0 else None
+    step = f"{base_name}.step" if step_out.exists() and step_out.stat().st_size > 0 else None
+    png = f"{base_name}.png" if png_out.exists() and png_out.stat().st_size > 0 else None
+    return {"name": base_name, "stl": stl, "step": step, "png": png, "description": ensure_description(file_path), "source": "FreeCAD", "source_url": get_source_url(file_path)}
 
 def main():
     if not DIST_DIR.exists(): DIST_DIR.mkdir()

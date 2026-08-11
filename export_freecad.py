@@ -33,9 +33,10 @@ def export(input_file, stl_out, step_out):
     step_out = os.path.abspath(step_out)
     
     # Find objects to export.
-    # Do NOT filter by InList: bodies inside App::Part / LinkGroup containers
-    # (common in FreeCAD 1.x documents) have a non-empty InList and would be
-    # skipped, resulting in an empty export and a blank preview.
+    # Do NOT filter by InList when collecting candidates: bodies inside
+    # App::Part / LinkGroup containers (common in FreeCAD 1.x documents) have
+    # a non-empty InList and would be skipped, resulting in an empty export.
+    # Final-object selection happens below as a preference, with a fallback.
     objs = []
     print(f"Total objects in document: {len(doc.Objects)}")
     for obj in doc.Objects:
@@ -71,6 +72,14 @@ def export(input_file, stl_out, step_out):
         unique.append(obj)
     objs = unique
 
+    # Prefer final/leaf objects (not used as input by anything else) so the
+    # export is the finished part rather than a pile of overlapping features.
+    # Fall back to all objects if no final object can be identified.
+    finals = [o for o in objs if not o.InList]
+    if finals:
+        print(f"  Exporting {len(finals)} final objects: {[o.Name for o in finals]}")
+        objs = finals
+
     # Export to STL (using Mesh)
     print(f"Exporting {len(objs)} objects to {stl_out}...")
     try:
@@ -92,8 +101,10 @@ def export(input_file, stl_out, step_out):
     FreeCAD.closeDocument(doc.Name)
     print("Script finished successfully.")
 
-if __name__ == "__main__":
-    # Get paths from environment variables
+if __name__ == "__main__" or os.environ.get("FC_INPUT"):
+    # Note: when run through FreeCAD's own interpreter (freecadcmd on Linux,
+    # python.exe on Windows) the script's __name__ is NOT "__main__". Check
+    # for the FC_INPUT env var as well so the export still runs.
     input_file = os.environ.get("FC_INPUT")
     stl_out = os.environ.get("FC_STL")
     step_out = os.environ.get("FC_STEP")
