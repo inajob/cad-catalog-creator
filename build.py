@@ -570,12 +570,20 @@ def main():
         groups.setdefault(m["dir"], []).append(m)
     ordered_dirs = sorted(groups, key=lambda d: ("\uffff" if d == "" else d))
 
+    dir_og_images = {}
+    for d in ordered_dirs:
+        if not d or not any(m.get("png") for m in groups[d]):
+            continue
+        (DIST_DIR / d).mkdir(parents=True, exist_ok=True)
+        if generate_og_collage(groups[d], DIST_DIR / d / "og_collage.png"):
+            dir_og_images[d] = f"{BASE_URL}{d}/og_collage.png"
+
     index_groups = [{"dir": d, "title": d or "その他", "description": get_dir_description(d), "models": prepare_models(groups[d], "")} for d in ordered_dirs]
     index_html = Template(INDEX_TEMPLATE).render(groups=index_groups, site_description=site_description_html, og_description=og_description, repo_url=REPO_URL, base_url=BASE_URL, og_image=og_image, style=STYLE)
     (DIST_DIR / "index.html").write_text(index_html, encoding="utf-8")
 
     for d in ordered_dirs:
-        dir_html = Template(DIR_TEMPLATE).render(dir_name=d or "その他", dir_description=get_dir_description(d), models=prepare_models(groups[d], d), repo_url=REPO_URL, og_url=f"{BASE_URL}{d}/" if d else BASE_URL, og_image=f"{BASE_URL}{og_image}" if og_image else None, style=STYLE)
+        dir_html = Template(DIR_TEMPLATE).render(dir_name=d or "その他", dir_description=get_dir_description(d), models=prepare_models(groups[d], d), repo_url=REPO_URL, og_url=f"{BASE_URL}{d}/" if d else BASE_URL, og_image=dir_og_images.get(d), style=STYLE)
         if d:
             (DIST_DIR / d / "index.html").write_text(dir_html, encoding="utf-8")
         else:
