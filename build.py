@@ -575,7 +575,7 @@ def main():
     (DIST_DIR / "index.html").write_text(index_html, encoding="utf-8")
 
     for d in ordered_dirs:
-        dir_html = Template(DIR_TEMPLATE).render(dir_name=d or "その他", dir_description=get_dir_description(d), models=prepare_models(groups[d], d), repo_url=REPO_URL, og_url=f"{BASE_URL}{d}/" if d else BASE_URL, og_image=og_image, style=STYLE)
+        dir_html = Template(DIR_TEMPLATE).render(dir_name=d or "その他", dir_description=get_dir_description(d), models=prepare_models(groups[d], d), repo_url=REPO_URL, og_url=f"{BASE_URL}{d}/" if d else BASE_URL, og_image=f"{BASE_URL}{og_image}" if og_image else None, style=STYLE)
         if d:
             (DIST_DIR / d / "index.html").write_text(dir_html, encoding="utf-8")
         else:
