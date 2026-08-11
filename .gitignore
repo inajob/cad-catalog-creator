@@ -1,0 +1,9 @@
+*.gcode
+*.stl
+*.step
+*.FCBak
+dist/
+.env
+_build_wrapper.py
+__pycache__/
+bak/
