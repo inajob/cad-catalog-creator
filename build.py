@@ -63,47 +63,64 @@ OG_IMAGE_SRC = MODELS_DIR / "og_image.png"
 
 # --- Templates ---
 STYLE = """
-    body { font-family: sans-serif; margin: 40px; background: #f0f0f0; color: #333; max-width: 1200px; margin-left: auto; margin-right: auto; }
-    header { margin-bottom: 30px; border-bottom: 2px solid #ccc; padding-bottom: 20px; position: relative; }
-    header h1 { margin-bottom: 10px; color: #222; }
-    .repo-link { position: absolute; right: 0; top: 0; font-size: 0.9em; font-weight: bold; }
-    .breadcrumb { font-size: 0.85em; color: #888; margin-bottom: 15px; }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background: #f0f0f0; color: #333; line-height: 1.6; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 16px; }
+    header { margin-bottom: 24px; border-bottom: 1px solid #ddd; padding-bottom: 16px; }
+    header h1 { margin: 0 0 8px 0; color: #222; font-size: 1.5rem; }
+    .repo-link { margin-top: 8px; font-size: 0.85rem; font-weight: 600; }
+    .repo-link a { color: #007bff; text-decoration: none; }
+    .repo-link a:hover { text-decoration: underline; }
+    .breadcrumb { font-size: 0.85rem; color: #888; margin-bottom: 12px; }
     .breadcrumb a { color: #007bff; text-decoration: none; }
     .breadcrumb a:hover { text-decoration: underline; }
-    .site-description { line-height: 1.6; color: #555; }
-    .site-description p { margin: 5px 0; }
-    .dir-title { margin: 40px 0 10px 0; padding-top: 20px; border-top: 2px solid #ccc; color: #222; }
+    .site-description { color: #555; margin-bottom: 16px; }
+    .site-description p { margin: 8px 0; }
+    .dir-title { margin: 32px 0 12px 0; padding-top: 16px; border-top: 1px solid #ddd; color: #222; font-size: 1.25rem; }
     .dir-title:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
     .dir-title a { color: #222; text-decoration: none; }
     .dir-title a:hover { text-decoration: underline; }
-    .dir-description { color: #777; font-size: 0.9em; margin-bottom: 15px; line-height: 1.5; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 30px; }
-    .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); display: flex; flex-direction: column; position: relative; }
-    .card img { max-width: 100%; height: auto; border-radius: 4px; background: #eee; min-height: 100px; object-fit: contain; }
-    .card h3 { margin: 15px 0 5px 0; font-size: 1.1em; word-break: break-all; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+    .dir-description { color: #777; font-size: 0.9rem; margin-bottom: 16px; line-height: 1.5; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+    .card { background: white; padding: 16px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; flex-direction: column; transition: box-shadow 0.2s; }
+    .card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+    .card img { width: 100%; height: auto; border-radius: 6px; background: #eee; min-height: 140px; object-fit: contain; }
+    .card h3 { margin: 12px 0 6px 0; font-size: 1.05rem; font-weight: 600; word-break: break-word; border-bottom: 1px solid #eee; padding-bottom: 8px; }
     .card h3 a { color: #222; text-decoration: none; }
     .card h3 a:hover { text-decoration: underline; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; font-weight: bold; margin-bottom: 10px; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 0.7rem; font-weight: 600; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
     .badge-openscad { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
     .badge-freecad { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
     .badge-cadquery { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-    .description { font-size: 0.9em; color: #666; margin-bottom: 20px; flex-grow: 1; line-height: 1.5; }
-    .description p { margin: 10px 0; }
-    .links { margin-top: auto; padding-top: 10px; border-top: 1px dashed #eee; display: flex; flex-wrap: wrap; gap: 10px; }
-    .links a { text-decoration: none; color: #007bff; font-size: 0.85em; font-weight: bold; }
-    .links a:hover { text-decoration: underline; }
-    .links .source-link { color: #28a745; }
-    .no-preview { height: 200px; background: #ddd; display: flex; align-items: center; justify-content: center; color: #666; }
-    .viewer-wrap { margin: 20px 0; }
-    .viewer { width: 100%; height: 480px; border: 1px solid #ddd; border-radius: 8px; }
-    .preview-wrap { margin: 10px 0; }
+    .description { font-size: 0.85rem; color: #666; margin-bottom: 16px; flex-grow: 1; }
+    .description p { margin: 8px 0; }
+    .links { margin-top: auto; padding-top: 12px; border-top: 1px dashed #eee; display: flex; flex-wrap: wrap; gap: 8px; }
+    .links a { text-decoration: none; color: #007bff; font-size: 0.8rem; font-weight: 600; padding: 6px 12px; border-radius: 4px; background: #f8f9fa; border: 1px solid #e9ecef; transition: background 0.2s, color 0.2s; min-height: 36px; display: inline-flex; align-items: center; }
+    .links a:hover { background: #e9ecef; text-decoration: none; }
+    .links a:active { background: #dee2e6; }
+    .links .source-link { color: #28a745; border-color: #c3e6cb; background: #f8fff9; }
+    .links .source-link:hover { background: #e9f7ef; }
+    .no-preview { height: 140px; background: #eee; display: flex; align-items: center; justify-content: center; color: #999; border-radius: 6px; font-size: 0.85rem; }
+    .viewer-wrap { margin: 16px 0; }
+    .viewer { width: 100%; height: 400px; border: 1px solid #ddd; border-radius: 8px; }
+    .preview-wrap { margin: 12px 0; }
     .preview-img { max-width: 100%; border-radius: 8px; }
-    .nav-prev-next { display: flex; justify-content: space-between; margin: 40px 0 20px; gap: 20px; }
-    .nav-prev-next a { color: #007bff; text-decoration: none; font-weight: bold; }
-    .nav-prev-next a:hover { text-decoration: underline; }
-    footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid #ccc; font-size: 0.9em; color: #777; text-align: center; }
-    footer a { color: #555; text-decoration: none; font-weight: bold; }
+    .nav-prev-next { display: flex; justify-content: space-between; margin: 24px 0 16px; gap: 12px; flex-wrap: wrap; }
+    .nav-prev-next a { color: #007bff; text-decoration: none; font-weight: 600; padding: 10px 16px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; min-height: 44px; display: inline-flex; align-items: center; }
+    .nav-prev-next a:hover { background: #e9ecef; text-decoration: none; }
+    footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #ddd; font-size: 0.8rem; color: #777; text-align: center; }
+    footer a { color: #555; text-decoration: none; font-weight: 600; }
     footer a:hover { text-decoration: underline; }
+
+    @media (max-width: 480px) {
+        .container { padding: 12px; }
+        header h1 { font-size: 1.3rem; }
+        .grid { grid-template-columns: 1fr; gap: 12px; }
+        .card { padding: 14px; }
+        .card img { min-height: 160px; }
+        .links a { font-size: 0.75rem; padding: 8px 10px; }
+        .nav-prev-next a { flex: 1; text-align: center; justify-content: center; }
+    }
 """
 
 CARD_MACRO = """
@@ -139,29 +156,31 @@ INDEX_TEMPLATE = CARD_MACRO + """
     <style>{{ style }}</style>
 </head>
 <body>
-    <header>
-        <h1>Cad Catalog Creator (CCC)</h1>
-        <div class="repo-link"><a href="{{ repo_url }}" target="_blank">View on GitHub</a></div>
-        <div class="site-description">
-            {% if site_description %}{{ site_description|safe }}{% else %}<p>Welcome to my 3D model collection created with CCC.</p>{% endif %}
-        </div>
-    </header>
+    <div class="container">
+        <header>
+            <h1>Cad Catalog Creator (CCC)</h1>
+            <div class="repo-link"><a href="{{ repo_url }}" target="_blank">View on GitHub</a></div>
+            <div class="site-description">
+                {% if site_description %}{{ site_description|safe }}{% else %}<p>Welcome to my 3D model collection created with CCC.</p>{% endif %}
+            </div>
+        </header>
 
-    {% for group in groups %}
-    <section>
-        <h2 class="dir-title">{% if group.dir %}<a href="{{ group.dir }}/">{% endif %}{{ group.title }}{% if group.dir %}</a>{% endif %}</h2>
-        {% if group.description %}<div class="dir-description">{{ group.description|safe }}</div>{% endif %}
-        <div class="grid">
-            {% for model in group.models %}
-            {{ model_card(model) }}
-            {% endfor %}
-        </div>
-    </section>
-    {% endfor %}
+        {% for group in groups %}
+        <section>
+            <h2 class="dir-title">{% if group.dir %}<a href="{{ group.dir }}/">{% endif %}{{ group.title }}{% if group.dir %}</a>{% endif %}</h2>
+            {% if group.description %}<div class="dir-description">{{ group.description|safe }}</div>{% endif %}
+            <div class="grid">
+                {% for model in group.models %}
+                {{ model_card(model) }}
+                {% endfor %}
+            </div>
+        </section>
+        {% endfor %}
 
-    <footer>
-        <p>Created by <a href="https://inajob.github.io/intro/index.html" target="_blank">inajob</a> | Powered by <a href="{{ repo_url }}" target="_blank">Cad Catalog Creator (CCC)</a></p>
-    </footer>
+        <footer>
+            <p>Created by <a href="https://inajob.github.io/intro/index.html" target="_blank">inajob</a> | Powered by <a href="{{ repo_url }}" target="_blank">Cad Catalog Creator (CCC)</a></p>
+        </footer>
+    </div>
 </body>
 </html>
 """
@@ -181,21 +200,23 @@ DIR_TEMPLATE = CARD_MACRO + """
     <style>{{ style }}</style>
 </head>
 <body>
-    <header>
-        <div class="breadcrumb"><a href="../index.html">Top</a> &gt; {{ dir_name }}</div>
-        <h1>{{ dir_name }}</h1>
-        {% if dir_description %}<div class="site-description">{{ dir_description|safe }}</div>{% endif %}
-    </header>
+    <div class="container">
+        <header>
+            <div class="breadcrumb"><a href="../index.html">Top</a> > {{ dir_name }}</div>
+            <h1>{{ dir_name }}</h1>
+            {% if dir_description %}<div class="site-description">{{ dir_description|safe }}</div>{% endif %}
+        </header>
 
-    <div class="grid">
-        {% for model in models %}
-        {{ model_card(model) }}
-        {% endfor %}
+        <div class="grid">
+            {% for model in models %}
+            {{ model_card(model) }}
+            {% endfor %}
+        </div>
+
+        <footer>
+            <p><a href="../index.html">← Top</a> | Powered by <a href="{{ repo_url }}" target="_blank">Cad Catalog Creator (CCC)</a></p>
+        </footer>
     </div>
-
-    <footer>
-        <p><a href="../index.html">← Top</a> | Powered by <a href="{{ repo_url }}" target="_blank">Cad Catalog Creator (CCC)</a></p>
-    </footer>
 </body>
 </html>
 """
@@ -216,48 +237,50 @@ MODEL_TEMPLATE = """
     <style>{{ style }}</style>
 </head>
 <body>
-    <header>
-        <div class="breadcrumb">
-            <a href="{{ top_href }}">Top</a>{% if model.dir %} &gt; <a href="{{ dir_href }}">{{ model.dir }}</a>{% endif %} &gt; {{ model.name }}
+    <div class="container">
+        <header>
+            <div class="breadcrumb">
+                <a href="{{ top_href }}">Top</a>{% if model.dir %} > <a href="{{ dir_href }}">{{ model.dir }}</a>{% endif %} > {{ model.name }}
+            </div>
+            <h1>{{ model.name }}</h1>
+            <div><span class="badge badge-{{ model.source|lower }}">{{ model.source }}</span></div>
+        </header>
+
+        {% if viewer_url %}
+        <div class="viewer-wrap">
+            <iframe class="viewer" src="{{ viewer_url }}" allowfullscreen></iframe>
         </div>
-        <h1>{{ model.name }}</h1>
-        <div><span class="badge badge-{{ model.source|lower }}">{{ model.source }}</span></div>
-    </header>
+        {% endif %}
 
-    {% if viewer_url %}
-    <div class="viewer-wrap">
-        <iframe class="viewer" src="{{ viewer_url }}" allowfullscreen></iframe>
+        {% if model.png %}
+        <div class="preview-wrap">
+            <img class="preview-img" src="{{ model.png }}" alt="{{ model.name }}">
+        </div>
+        {% else %}
+        <div class="no-preview">No Preview</div>
+        {% endif %}
+
+        <div class="description">
+            {% if model.description %}{{ model.description|safe }}{% else %}<p>(No description)</p>{% endif %}
+        </div>
+
+        <div class="links">
+            {% if model.stl %}<a href="{{ model.stl }}">STL</a>{% endif %}
+            {% if model.step %}<a href="{{ model.step }}">STEP</a>{% endif %}
+            {% if model.source_url %}<a href="{{ model.source_url }}" class="source-link" target="_blank">Source</a>{% endif %}
+        </div>
+
+        {% if prev or next %}
+        <div class="nav-prev-next">
+            <div class="nav-prev">{% if prev %}<a href="{{ prev.href }}"><span aria-hidden="true">← </span>{{ prev.name }}</a>{% endif %}</div>
+            <div class="nav-next">{% if next %}<a href="{{ next.href }}">{{ next.name }}<span aria-hidden="true"> →</span></a>{% endif %}</div>
+        </div>
+        {% endif %}
+
+        <footer>
+            <p><a href="{{ back_href }}">← 戻る</a> | Powered by <a href="{{ repo_url }}" target="_blank">Cad Catalog Creator (CCC)</a></p>
+        </footer>
     </div>
-    {% endif %}
-
-    {% if model.png %}
-    <div class="preview-wrap">
-        <img class="preview-img" src="{{ model.png }}" alt="{{ model.name }}">
-    </div>
-    {% else %}
-    <div class="no-preview">No Preview</div>
-    {% endif %}
-
-    <div class="description">
-        {% if model.description %}{{ model.description|safe }}{% else %}<p>(No description)</p>{% endif %}
-    </div>
-
-    <div class="links">
-        {% if model.stl %}<a href="{{ model.stl }}">STL</a>{% endif %}
-        {% if model.step %}<a href="{{ model.step }}">STEP</a>{% endif %}
-        {% if model.source_url %}<a href="{{ model.source_url }}" class="source-link" target="_blank">Source</a>{% endif %}
-    </div>
-
-    {% if prev or next %}
-    <div class="nav-prev-next">
-        <div class="nav-prev">{% if prev %}<a href="{{ prev.href }}">← {{ prev.name }}</a>{% endif %}</div>
-        <div class="nav-next">{% if next %}<a href="{{ next.href }}">{{ next.name }} →</a>{% endif %}</div>
-    </div>
-    {% endif %}
-
-    <footer>
-        <p><a href="{{ back_href }}">← 戻る</a> | Powered by <a href="{{ repo_url }}" target="_blank">Cad Catalog Creator (CCC)</a></p>
-    </footer>
 </body>
 </html>
 """
