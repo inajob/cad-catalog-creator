@@ -513,12 +513,69 @@ def convert_py(file_path):
 
 def convert_fcstd(file_path):
     dir_name, stem, out_dir, page_url, asset_prefix = model_targets(file_path)
-    stl_out, step_out, png_out = out_dir/f"{stem}.stl", out_dir/f"{stem}.step", out_dir/f"{stem}.png"
-    if not all(f.exists() for f in [stl_out, png_out]) or file_path.stat().st_mtime > stl_out.stat().st_mtime:
+    stl_dir = out_dir / "stl"
+    step_dir = out_dir / "step"
+    stl_dir.mkdir(exist_ok=True)
+    step_dir.mkdir(exist_ok=True)
+    
+    models = []
+    if not (stl_dir.exists() and any(stl_dir.iterdir())) or file_path.stat().st_mtime > max((f.stat().st_mtime for f in stl_dir.iterdir()), default=0):
         print(f"  Building {page_url}...")
         env = os.environ.copy()
-        env.update({"FC_INPUT": str(file_path.absolute()), "FC_STL": str(stl_out.absolute()), "FC_STEP": str(step_out.absolute()), "FC_BIN_DIR": FREECAD_BIN_DIR})
+        env.update({"FC_INPUT": str(file_path.absolute()), "FC_STL_DIR": str(stl_dir.absolute()), "FC_STEP_DIR": str(step_dir.absolute()), "FC_BIN_DIR": FREECAD_BIN_DIR})
         run_command([FREECAD_PATH, str(Path("export_freecad.py").absolute())], env=env)
+    
+    # Collect exported bodies
+    for stl_file in sorted(stl_dir.glob("*.stl")):
+        if stl_file.stat().st_size == 0:
+            continue
+        body_stem = stl_file.stem
+        model_stem = f"{stem}_{body_stem}" if body_stem != stem else stem
+        model_out_dir = DIST_DIR / dir_name / model_stem if dir_name else DIST_DIR / model_stem
+        model_out_dir.mkdir(parents=True, exist_ok=True)
+        png_out = model_out_dir / f"{model_stem}.png"
+        step_file = step_dir / f"{body_stem}.step"
+        
+        # Copy STL to model directory
+        model_stl = model_out_dir / f"{model_stem}.stl"
+        if not model_stl.exists() or stl_file.stat().st_mtime > model_stl.stat().st_mtime:
+            shutil.copy2(stl_file, model_stl)
+        
+        if not png_out.exists() or stl_file.stat().st_mtime > png_out.stat().st_mtime:
+            ok = render_png_from_stl(stl_file, png_out)
+            if not ok and png_out.exists():
+                png_out.unlink()
+        
+        # Copy STEP to model directory
+        model_step = None
+        if step_file.exists() and step_file.stat().st_size > 0:
+            model_step = model_out_dir / f"{model_stem}.step"
+            if not model_step.exists() or step_file.stat().st_mtime > model_step.stat().st_mtime:
+                shutil.copy2(step_file, model_step)
+        
+        asset_prefix_body = f"{dir_name}/{model_stem}/{model_stem}" if dir_name else f"{model_stem}/{model_stem}"
+        stl_rel = f"{asset_prefix_body}.stl"
+        step_rel = f"{asset_prefix_body}.step" if model_step and model_step.exists() and model_step.stat().st_size > 0 else None
+        png_rel = f"{asset_prefix_body}.png" if png_out.exists() and png_out.stat().st_size > 0 else None
+        
+        models.append({
+            "name": f"{stem} - {body_stem}" if body_stem != stem else stem,
+            "dir": dir_name,
+            "stem": model_stem,
+            "page_url": f"{dir_name}/{model_stem}/" if dir_name else f"{model_stem}/",
+            "stl": stl_rel,
+            "step": step_rel,
+            "png": png_rel,
+            "description": ensure_description(file_path),
+            "source": "FreeCAD",
+            "source_url": get_source_url(file_path)
+        })
+    
+    # Fallback: if no bodies exported, try legacy single-file or existing STL
+    if not models:
+        stl_out = out_dir / f"{stem}.stl"
+        step_out = out_dir / f"{stem}.step"
+        png_out = out_dir / f"{stem}.png"
         if not stl_out.exists() or stl_out.stat().st_size == 0:
             fallback = find_fallback_stl(file_path.parent)
             if fallback:
@@ -526,18 +583,29 @@ def convert_fcstd(file_path):
                 shutil.copy(fallback, stl_out)
         if stl_out.exists() and stl_out.stat().st_size > 0:
             ok = render_png_from_stl(stl_out, png_out)
-        else:
-            ok = False
-        if not ok:
-            if png_out.exists():
-                png_out.unlink()
-            if extract_fcstd_thumbnail(file_path, png_out):
-                ok = True
-                print(f"  Using embedded FreeCAD thumbnail as preview")
-    stl = f"{asset_prefix}.stl" if stl_out.exists() and stl_out.stat().st_size > 0 else None
-    step = f"{asset_prefix}.step" if step_out.exists() and step_out.stat().st_size > 0 else None
-    png = f"{asset_prefix}.png" if png_out.exists() and png_out.stat().st_size > 0 else None
-    return {"name": stem, "dir": dir_name, "stem": stem, "page_url": page_url, "stl": stl, "step": step, "png": png, "description": ensure_description(file_path), "source": "FreeCAD", "source_url": get_source_url(file_path)}
+            if not ok:
+                if png_out.exists():
+                    png_out.unlink()
+                if extract_fcstd_thumbnail(file_path, png_out):
+                    ok = True
+                    print(f"  Using embedded FreeCAD thumbnail as preview")
+        stl = f"{asset_prefix}.stl" if stl_out.exists() and stl_out.stat().st_size > 0 else None
+        step = f"{asset_prefix}.step" if step_out.exists() and step_out.stat().st_size > 0 else None
+        png = f"{asset_prefix}.png" if png_out.exists() and png_out.stat().st_size > 0 else None
+        models.append({
+            "name": stem,
+            "dir": dir_name,
+            "stem": stem,
+            "page_url": page_url,
+            "stl": stl,
+            "step": step,
+            "png": png,
+            "description": ensure_description(file_path),
+            "source": "FreeCAD",
+            "source_url": get_source_url(file_path)
+        })
+    
+    return models
 
 def main():
     if DIST_DIR.exists():
@@ -554,7 +622,7 @@ def main():
     for py_file in sorted(MODELS_DIR.glob("**/*.py")):
         if py_file.name in ["build.py", "export_freecad.py", "site_description.md", "og_image.png"] or py_file.name.startswith("_"): continue
         models_info.append(convert_py(py_file))
-    for fcstd_file in sorted(MODELS_DIR.glob("**/*.FCStd")): models_info.append(convert_fcstd(fcstd_file))
+    for fcstd_file in sorted(MODELS_DIR.glob("**/*.FCStd")): models_info.extend(convert_fcstd(fcstd_file))
 
     og_image = None
     if OG_IMAGE_SRC.exists():
