@@ -112,13 +112,13 @@ STYLE = """
     footer a { color: #555; text-decoration: none; font-weight: 600; }
     footer a:hover { text-decoration: underline; }
 
-    @media (max-width: 480px) {
+    @media (max-width: 768px) {
         .container { padding: 12px; }
         header h1 { font-size: 1.3rem; }
-        .grid { grid-template-columns: 1fr; gap: 12px; }
-        .card { padding: 14px; }
-        .card img { min-height: 160px; }
-        .links a { font-size: 0.75rem; padding: 8px 10px; }
+        .grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        .card { padding: 12px; }
+        .card img { min-height: 120px; }
+        .links a { font-size: 0.7rem; padding: 6px 8px; }
         .nav-prev-next a { flex: 1; text-align: center; justify-content: center; }
     }
 """
